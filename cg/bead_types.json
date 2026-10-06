@@ -1,0 +1,187 @@
+{
+ "martini2": {
+  "ALA": {
+   "BB": "N0"
+  },
+  "ARG": {
+   "BB": "Nda",
+   "SC1": "N0",
+   "SC2": "Qd"
+  },
+  "ASN": {
+   "BB": "Nda",
+   "SC1": "P5"
+  },
+  "ASP": {
+   "BB": "P5",
+   "SC1": "Qa"
+  },
+  "CYS": {
+   "BB": "Nda",
+   "SC1": "C5"
+  },
+  "GLN": {
+   "BB": "Nda",
+   "SC1": "P4"
+  },
+  "GLU": {
+   "BB": "Nda",
+   "SC1": "Qa"
+  },
+  "GLY": {
+   "BB": "Nda"
+  },
+  "HIS": {
+   "BB": "Nda",
+   "SC1": "SC4",
+   "SC2": "SP1",
+   "SC3": "SP1"
+  },
+  "ILE": {
+   "BB": "Nda",
+   "SC1": "AC1"
+  },
+  "LEU": {
+   "BB": "Nda",
+   "SC1": "AC1"
+  },
+  "LYS": {
+   "BB": "Nda",
+   "SC1": "C3",
+   "SC2": "Qd"
+  },
+  "MET": {
+   "BB": "Nda",
+   "SC1": "C5"
+  },
+  "PHE": {
+   "BB": "Nda",
+   "SC1": "SC5",
+   "SC2": "SC5",
+   "SC3": "SC5"
+  },
+  "PRO": {
+   "BB": "N0",
+   "SC1": "C3"
+  },
+  "SER": {
+   "BB": "Nda",
+   "SC1": "P1"
+  },
+  "THR": {
+   "BB": "Nda",
+   "SC1": "P1"
+  },
+  "TRP": {
+   "BB": "Nda",
+   "SC1": "SC4",
+   "SC2": "SNd",
+   "SC3": "SC5",
+   "SC4": "SC5"
+  },
+  "TYR": {
+   "BB": "Nda",
+   "SC1": "SC4",
+   "SC2": "SC4",
+   "SC3": "SP1"
+  },
+  "VAL": {
+   "BB": "Nda",
+   "SC1": "AC2"
+  }
+ },
+ "martini3": {
+  "ALA": {
+   "BB": "SP2",
+   "SC1": "TC3"
+  },
+  "ARG": {
+   "BB": "P2",
+   "SC1": "SC3",
+   "SC2": "SQ3p"
+  },
+  "ASN": {
+   "BB": "P2",
+   "SC1": "SP5"
+  },
+  "ASP": {
+   "BB": "P2",
+   "SC1": "SQ5n"
+  },
+  "CYS": {
+   "BB": "P2",
+   "SC1": "TC6"
+  },
+  "GLN": {
+   "BB": "P2",
+   "SC1": "P5"
+  },
+  "GLU": {
+   "BB": "P2",
+   "SC1": "Q5n"
+  },
+  "GLY": {
+   "BB": "SP1"
+  },
+  "HIS": {
+   "BB": "P2",
+   "SC1": "TC4",
+   "SC2": "TN6d",
+   "SC3": "TN5a"
+  },
+  "ILE": {
+   "BB": "P2",
+   "SC1": "SC2"
+  },
+  "LEU": {
+   "BB": "P2",
+   "SC1": "SC2"
+  },
+  "LYS": {
+   "BB": "P2",
+   "SC1": "SC3",
+   "SC2": "SQ4p"
+  },
+  "MET": {
+   "BB": "P2",
+   "SC1": "C6"
+  },
+  "PHE": {
+   "BB": "P2",
+   "SC1": "SC4",
+   "SC2": "TC5",
+   "SC3": "TC5"
+  },
+  "PRO": {
+   "BB": "SP2a",
+   "SC1": "SC3"
+  },
+  "SER": {
+   "BB": "P2",
+   "SC1": "TP1"
+  },
+  "THR": {
+   "BB": "P2",
+   "SC1": "SP1"
+  },
+  "TRP": {
+   "BB": "P2",
+   "SC1": "TC4",
+   "SC2": "TN6d",
+   "SC3": "TC5",
+   "SC4": "TC5",
+   "SC5": "TC5"
+  },
+  "TYR": {
+   "BB": "P2",
+   "SC1": "TC4",
+   "SC2": "TC5",
+   "SC3": "TC5",
+   "SC4": "TN6"
+  },
+  "VAL": {
+   "BB": "SP2",
+   "SC1": "SC3"
+  }
+ }
+}
