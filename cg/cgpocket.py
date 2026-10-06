@@ -652,6 +652,32 @@ def map_regions(freq_dx: Path, instances, iso: float):
     return list(groups.values()), leftovers
 
 
+def write_frame_pockets(path: Path, pockets) -> None:
+    """Every per-frame fpocket pocket with the consensus pocket it joined, so rankings
+    and merges can be re-derived without running fpocket again.
+
+    Arrays (one row per per-frame pocket): ``consensus`` (its consensus pocket's
+    quality rank), ``frame``, ``rank`` (fpocket's rank in that frame), ``p``,
+    ``score``, ``burial``, ``center`` (n, 3); its alpha spheres are
+    ``sphere_centers``/``sphere_radii`` rows ``offsets[i]:offsets[i + 1]``.
+    """
+    rows = [(q["rank_quality"], m) for q in pockets for m in q["members"]]
+    spheres = [m["centers"] for _, m in rows]
+    np.savez_compressed(
+        path,
+        consensus=np.array([c for c, _ in rows], int),
+        frame=np.array([m["frame"] for _, m in rows], int),
+        rank=np.array([m["rank"] for _, m in rows], int),
+        p=np.array([m["p"] for _, m in rows]),
+        score=np.array([m["score"] for _, m in rows]),
+        burial=np.array([m["burial"] for _, m in rows]),
+        center=np.array([m["center"] for _, m in rows]).reshape(-1, 3),
+        offsets=np.cumsum([0] + [len(c) for c in spheres]),
+        sphere_centers=np.vstack(spheres) if spheres else np.zeros((0, 3)),
+        sphere_radii=np.concatenate([m["radii"] for _, m in rows]) if rows else np.zeros(0),
+    )
+
+
 def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
                     cutoff: float = CONSENSUS_CUTOFF, merge: str = "centroid",
                     merge_iso: float = 0.2):  # fmt: skip
@@ -747,7 +773,7 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
                         "center": center, "rep": rep, "cryptic": cryptic, "frames_open": len(open_),
                         "volume": float(volume.group(1)) if volume else float("nan"),
                         "alpha_spheres": len(rep["centers"]),
-                        "open": open_})  # fmt: skip
+                        "open": open_, "members": g["members"]})  # fmt: skip
     for key in ("persistence", "quality", "quality_burial"):
         floor = key != "persistence"
         order = sorted(range(len(pockets)), key=lambda i: (
@@ -769,6 +795,7 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
                 q["rep"]["frame"], f"{q['volume']:.1f}", q["alpha_spheres"],
                 f"{c[0]:.3f}", f"{c[1]:.3f}", f"{c[2]:.3f}"]  # fmt: skip
 
+    write_frame_pockets(where / "frame_pockets.npz", pockets)
     with open(where / "consensus_pockets.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(head)
