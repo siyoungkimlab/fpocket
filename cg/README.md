@@ -47,7 +47,8 @@ Flags after `--` override the preset, e.g. `... run x.mae --model sirah -- -i 25
 
 A whole apo/holo set goes through `benchmark/run_views.py` (see
 [Batch runs](#batch-runs)). The Claude Code skill `cg-fpocket`
-(`~/.claude/skills/cg-fpocket/SKILL.md`) describes the same workflow.
+(`skill/cg-fpocket/SKILL.md`; install with
+`cp -r skill/cg-fpocket ~/.claude/skills/`) describes the same workflow.
 
 ## Presets (`presets.json`)
 
