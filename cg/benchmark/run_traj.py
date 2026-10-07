@@ -155,7 +155,7 @@ def main():
     ap.add_argument("--models", nargs="+", default=list(MODELS), choices=MODELS)
     ap.add_argument("--stride", type=int, default=1)
     ap.add_argument("-j", "--jobs", type=int, default=8)
-    ap.add_argument("--consensus-cutoff", type=float, help="passed to cgpocket.py traj (default 4 Å)")
+    ap.add_argument("--consensus-cutoff", type=float, help="passed to cgpocket.py traj (default 6 Å)")
     ap.add_argument("--merge", choices=("centroid", "map"), help="passed to cgpocket.py traj")
     ap.add_argument("--merge-iso", type=float, default=0.2, help="passed to cgpocket.py traj")
     args = ap.parse_args()

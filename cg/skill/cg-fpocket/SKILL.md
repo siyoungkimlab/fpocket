@@ -189,7 +189,7 @@ Add `--rank` to `traj` for a pocket ranking over the trajectory: fpocket (with t
 preset) runs on every (strided) frame, each pocket's score becomes a probability
 (the refitted score is logistic) and gets boonza.sites' burial (share of 26
 directions that meet protein within 10 Å). Pockets of all frames are grouped
-into consensus pockets (greedy, best first, centres within 4 Å of a running
+into consensus pockets (greedy, best first, centres within 6 Å of a running
 centroid, `--consensus-cutoff` to merge more or split more; each frame counts
 once, with its best member), and ranked three ways:
 

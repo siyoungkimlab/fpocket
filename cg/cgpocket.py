@@ -543,8 +543,11 @@ def cmd_traj(args, extra):
 
 
 #: a consensus pocket: frames' pockets whose centres lie within this of its centroid
-#: (--consensus-cutoff: larger merges neighbouring pockets, smaller splits a moving one)
-CONSENSUS_CUTOFF = 4.0
+#: (--consensus-cutoff: larger merges neighbouring pockets, smaller splits a moving one).
+#: 6 Å: on two sets of 40 apo trajectories it halves splitting, lifts Martini 3
+#: Top-3/5/10 and leaves Martini 2, SIRAH and MOc within noise; 7-10 Å start to
+#: merge neighbouring sites (benchmark: cutoff sweep, 2026-10-06)
+CONSENSUS_CUTOFF = 6.0
 #: cryptic: no pocket of the apo crystal structure within this of the consensus centre
 CRYPTIC_CUTOFF = 4.0
 #: quality is ranked first among pockets open in at least this share of frames
@@ -658,8 +661,8 @@ def write_frame_pockets(path: Path, pockets) -> None:
 
     Arrays (one row per per-frame pocket): ``consensus`` (its consensus pocket's
     quality rank), ``frame``, ``rank`` (fpocket's rank in that frame), ``p``,
-    ``score``, ``burial``, ``center`` (n, 3); its alpha spheres are
-    ``sphere_centers``/``sphere_radii`` rows ``offsets[i]:offsets[i + 1]``.
+    ``score``, ``burial``, ``center`` (n, 3), ``block`` (fpocket's info text); its alpha
+    spheres are ``sphere_centers``/``sphere_radii`` rows ``offsets[i]:offsets[i + 1]``.
     """
     rows = [(q["rank_quality"], m) for q in pockets for m in q["members"]]
     spheres = [m["centers"] for _, m in rows]
@@ -675,6 +678,7 @@ def write_frame_pockets(path: Path, pockets) -> None:
         offsets=np.cumsum([0] + [len(c) for c in spheres]),
         sphere_centers=np.vstack(spheres) if spheres else np.zeros((0, 3)),
         sphere_radii=np.concatenate([m["radii"] for _, m in rows]) if rows else np.zeros(0),
+        block=np.array([m["block"] for _, m in rows], dtype=str),
     )
 
 
@@ -1075,7 +1079,7 @@ def main():
                    "--merge map (lower merges more, higher splits more; default 0.2)")  # fmt: skip
     p.add_argument("--consensus-cutoff", type=float, default=CONSENSUS_CUTOFF,
                    help="Å: a frame's pocket joins a consensus pocket whose centroid is this close "
-                   "(larger merges neighbouring pockets, smaller splits a moving one; default 4)")  # fmt: skip
+                   "(larger merges neighbouring pockets, smaller splits a moving one; default 6)")  # fmt: skip
     p.set_defaults(fn=cmd_traj)
 
     p = sub.add_parser("flags", help="print the tuned fpocket/mdpocket flags")
