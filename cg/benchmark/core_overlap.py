@@ -35,7 +35,8 @@ MEASURES = ["ligand_volume_covered", "pocket_volume_near_ligand", "pocket_volume
 
 
 def one(args):
-    where, ranking, k, spacing = args
+    where, ranking, k, spacing, outside = args
+    K.OUTSIDE = outside  # worker processes start with the module default
     import boonza
 
     model = where.parent.name
@@ -69,7 +70,7 @@ def one(args):
                "core_volume": len(pts) * spacing**3,
                "PPc_core": bool(len(pts)) and dca(pts.mean(0)) < C.PPC_CUTOFF}  # fmt: skip
         if len(pts):
-            ov = V.overlap(V._voxels_within(pts, K.cell_radius(spacing)), lig)
+            ov = V.overlap(V.grid_pocket(pts, spacing), lig)
             row.update({m: round(ov[m], 4) for m in MEASURES[:4]})
         else:
             row.update({m: 0.0 for m in MEASURES[:4]})
@@ -96,9 +97,12 @@ def main():
     ap.add_argument("--ranking", default="quality_burial", choices=["quality", "persistence", "quality_burial"])
     ap.add_argument("-k", type=int, default=10)
     ap.add_argument("--spacing", type=float, default=K.SPACING)
+    ap.add_argument("--outside", type=float, default=K.OUTSIDE,
+                    help="a core point must be this many bead radii from every bead (SiteMap: 1.58)")
     ap.add_argument("-j", "--jobs", type=int, default=8)
     args = ap.parse_args()
-    jobs = [(d, args.ranking, args.k, args.spacing) for m in args.models for d in sorted((args.root / m).iterdir())
+    K.OUTSIDE = args.outside
+    jobs = [(d, args.ranking, args.k, args.spacing, args.outside) for m in args.models for d in sorted((args.root / m).iterdir())
             if (d / "frame_pockets.npz").exists()]  # fmt: skip
     by_model = {}
     with ProcessPoolExecutor(args.jobs) as pool:

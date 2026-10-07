@@ -73,8 +73,20 @@ def cell_radius(spacing: float) -> float:
 
 
 def grid_pocket(points, spacing: float) -> np.ndarray:
-    """Voxels of a pocket given as points of a ``spacing`` grid (each one cell of volume)."""
-    return _voxels_within(points, cell_radius(spacing))
+    """Voxels of a pocket given as points of a ``spacing`` grid, each point its whole cube
+    of side ``spacing`` (cubes tile the space; spheres of equal volume would leave gaps)."""
+    points = np.asarray(points, float).reshape(-1, 3)
+    if not len(points):
+        return np.zeros((0, 3), int)
+    half = spacing / 2
+    n = int(np.ceil(half / SPACING))
+    offsets = np.mgrid[-n : n + 1, -n : n + 1, -n : n + 1].reshape(3, -1).T
+    out = []
+    for c in points:
+        cand = np.round(c / SPACING).astype(int) + offsets
+        keep = (np.abs(cand * SPACING - c) <= half + 1e-9).all(1)
+        out.append(cand[keep])
+    return np.unique(np.vstack(out), axis=0)
 
 
 def ligand_voxels(atoms, extra: float = 0.0) -> np.ndarray:
