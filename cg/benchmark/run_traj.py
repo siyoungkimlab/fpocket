@@ -88,6 +88,8 @@ def frames_used(log: Path) -> str:
 
 
 RANKINGS = ("quality", "persistence", "quality_burial")
+#: PPc_core: the same test from the centre of the pocket's enclosed core
+CRITERIA = ("PPc", "MOc", "PPc_core")
 
 
 def first_ranks(table: Path) -> dict:
@@ -96,8 +98,8 @@ def first_ranks(table: Path) -> dict:
     rows = list(csv.DictReader(open(table)))
     out = {}
     for r in RANKINGS:
-        for crit in ("PPc", "MOc"):
-            hits = [int(x[f"rank_{r}"]) for x in rows if x[crit] == "True"]
+        for crit in CRITERIA:
+            hits = [int(x[f"rank_{r}"]) for x in rows if x.get(crit) == "True"]
             out[f"{r}_{crit}"] = min(hits) if hits else None
     site = [x for x in rows if x["PPc"] == "True"]
     best = min(site, key=lambda x: int(x["rank_quality"])) if site else None
@@ -107,7 +109,7 @@ def first_ranks(table: Path) -> dict:
 
 
 def summarize(model_dir: Path, rows) -> None:
-    rank_cols = [f"{r}_{c}" for r in RANKINGS for c in ("PPc", "MOc")]
+    rank_cols = [f"{r}_{c}" for r in RANKINGS for c in CRITERIA]
     lines = [["apo", "holo", "frames", "site_frequency_median", "ligand_atoms_in_pocket_half_the_frames",
               *[f"first_rank_{c}" for c in rank_cols], "site_occupancy", "site_cryptic",
               "seconds", "status"]]  # fmt: skip
@@ -138,10 +140,10 @@ def summarize(model_dir: Path, rows) -> None:
           f"{sum(m >= 0.5 for m in med)}; median of the medians: {np.median(med):.2f}" if med else "- no pairs",
           "", "Consensus-pocket ranking over the trajectory (cgpocket.py traj --rank): fraction of",
           "pairs with a correct pocket among the first k, Top-1 / Top-3 / Top-5 / Top-10.", "",
-          "| ranking | PPc | MOc |", "|---|---|---|",
+          "| ranking | PPc | MOc | PPc, core centre |", "|---|---|---|---|",
           *[f"| {r.replace('_', ' x ')} | " + " | ".join(
               " / ".join(f"{sum(1 for x in tops[f'{r}_{c}'] if x and x <= k) / max(len(tops[f'{r}_{c}']), 1):.2f}"
-                         for k in (1, 3, 5, 10)) for c in ("PPc", "MOc")) + " |" for r in RANKINGS],
+                         for k in (1, 3, 5, 10)) for c in CRITERIA) + " |" for r in RANKINGS],
           "", "Per pair: summary.csv; per ligand atom: <apo>_<holo>/ligand_site_frequency_<holo>.csv;",
           "view: cd <apo>_<holo> && pymol view.pml"]  # fmt: skip
     (model_dir / "summary.md").write_text("\n".join(md) + "\n")

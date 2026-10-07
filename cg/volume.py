@@ -67,6 +67,16 @@ def point_pocket(points, radius: float = POINT_RADIUS) -> np.ndarray:
     return _voxels_within(points, radius)
 
 
+def cell_radius(spacing: float) -> float:
+    """Radius of a sphere with the volume of one ``spacing`` grid cell."""
+    return spacing * (3 / (4 * np.pi)) ** (1 / 3)
+
+
+def grid_pocket(points, spacing: float) -> np.ndarray:
+    """Voxels of a pocket given as points of a ``spacing`` grid (each one cell of volume)."""
+    return _voxels_within(points, cell_radius(spacing))
+
+
 def ligand_voxels(atoms, extra: float = 0.0) -> np.ndarray:
     return _voxels_within(atoms, LIGAND_RADIUS + extra)
 

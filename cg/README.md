@@ -177,8 +177,23 @@ within 4 Å is flagged **cryptic**. Outputs in the view folder:
 PPc/MOc and the share of open frames passing PPc), `fpocket_info.txt` (each
 consensus pocket's descriptors in its best frame), `frames.csv`, and
 `consensus_pockets.pqr` (shown in `view.pml`, coloured by quality rank,
-labelled with occupancy and the cryptic flag). Cost: one fpocket run per frame,
-~0.1-0.5 s each, so prefer `--stride` for long trajectories.
+labelled with occupancy and the cryptic flag), and `frame_pockets.npz` (every
+per-frame pocket, so rankings can be redone without fpocket).
+
+**Enclosed cores.** fpocket's pocket is all the empty space its alpha spheres
+describe (on beads, 900-2000 Å³ for a typical site). Each consensus pocket
+also gets its enclosed core on its best frame (`core.py`): the 2 Å grid points
+inside its alpha spheres that are outside every bead by 1.58 x its radius, in
+contact with a bead and enclosed (at least half of 60 rays meet a bead within
+8 Å), SiteMap's site-point rules (Halgren 2009) with each bead's own radius
+from the force field (`boonza.sites.particle_radii`). Cores are SiteMap-sized
+(about 150-350 Å³) and sit more tightly on the ligand; the ranking does not
+change. Columns `core_volume`, `core_center_*`, and against the holo ligand
+`core_center_to_nearest_ligand_atom`, `PPc_core`, `core_ligand_volume_covered`,
+`core_volume_near_ligand` (within 2 Å), `core_volume_in_ligand`, `core_DVO`
+(volume measures from `volume.py`); `consensus_cores.pqr`, and in `view.pml`
+an object `core_<quality rank>` per drawn pocket. Cost: one fpocket run per
+frame, ~0.1-0.5 s each, so prefer `--stride` for long trajectories.
 
 Structures are written back in the format they were given (MAE stays MAE,
 ligand included); DMS is written as MAE, which PyMOL opens.

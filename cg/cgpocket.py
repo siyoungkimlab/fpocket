@@ -47,6 +47,8 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import cgprep  # noqa: E402
+import core  # noqa: E402
+import volume as voxels  # noqa: E402
 
 PRESETS = HERE / "presets.json"
 
@@ -532,8 +534,12 @@ def cmd_traj(args, extra):
         ranked = None
         if args.rank:
             crystal = crystal_pockets(apo, model, flags, where) if apo is not None else None
+            from boonza.sites import particle_radii  # noqa: PLC0415
+
+            # each bead's own radius (sigma/2) from the force field, for the pockets' enclosed cores
+            bead_radii = particle_radii(system, np.asarray(ids, np.int64), "sigma")
             ranked = rank_trajectory(prefix, flags, crystal, ligands, where, args.consensus_cutoff,
-                                     args.merge, args.merge_iso)
+                                     args.merge, args.merge_iso, bead_radii)
         if apo is not None:
             view = write_traj_view(prefix, apo, holos, args.holo_ligand, iso or 8.0, args.view_dir,
                                    structure_format(args.apo), ranked)
@@ -684,7 +690,7 @@ def write_frame_pockets(path: Path, pockets) -> None:
 
 def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
                     cutoff: float = CONSENSUS_CUTOFF, merge: str = "centroid",
-                    merge_iso: float = 0.2):  # fmt: skip
+                    merge_iso: float = 0.2, bead_radii=None):  # fmt: skip
     """Consensus pockets over a trajectory, ranked three ways.
 
     fpocket (with the model's preset) runs on every frame of ``prefix``.dcd;
@@ -705,10 +711,14 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
     - quality x buriedness: quality times its mean burial over those frames.
 
     A consensus pocket with no pocket of the apo crystal structure (``crystal``)
-    within ``CRYPTIC_CUTOFF`` is flagged cryptic.  ``ligands``: [(tag, heavy
+    within ``CRYPTIC_CUTOFF`` is flagged cryptic.  With ``bead_radii`` (one per bead
+    of ``prefix``.pdb), each consensus pocket also gets its enclosed core on its best
+    frame (core.py: SiteMap's site-point rules on the beads), a compact,
+    ligand-sized site; the ranking is not changed by it.  ``ligands``: [(tag, heavy
     atoms)] to score each pocket against.  Writes consensus_pockets.csv,
-    pockets_vs_holo[_tag].csv, fpocket_info.txt, frames.csv and
-    consensus_pockets.pqr into ``where``; returns the consensus pockets.
+    pockets_vs_holo[_tag].csv, fpocket_info.txt, frames.csv, frame_pockets.npz,
+    consensus_pockets.pqr and consensus_cores.pqr into ``where``; returns the
+    consensus pockets.
     """
     import importlib  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
@@ -719,10 +729,11 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
     beads = load(Path(f"{prefix}.pdb"))
     traj = boonza.open_trajectory(f"{prefix}.dcd", beads)
     pdb_text = Path(f"{prefix}.pdb").read_text()
-    instances, frames = [], []
+    instances, frames, coords = [], [], []
     with tempfile.TemporaryDirectory() as tmp:
         for f, frame in enumerate(traj):
             xyz = np.asarray(frame.positions, float)
+            coords.append(xyz.astype(np.float32))
             pockets = run_fpocket_frame(pdb_text, xyz, flags, Path(tmp))
             frames.append(len(pockets))
             for rank, (centers, radii, score, block) in enumerate(pockets, 1):
@@ -785,11 +796,15 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
         for r, i in enumerate(order, 1):
             pockets[i][f"rank_{key}"] = r
     pockets.sort(key=lambda q: q["rank_quality"])
+    for q in pockets:
+        q["core"] = (core.core_points(q["rep"]["centers"], q["rep"]["radii"], coords[q["rep"]["frame"]],
+                                      bead_radii) if bead_radii is not None else np.zeros((0, 3)))  # fmt: skip
     where.mkdir(parents=True, exist_ok=True)
     head = ["rank_quality", "rank_persistence", "rank_quality_burial", "quality", "persistence",
             "quality_burial", "occupancy", "burial", "cryptic", "frames_open", "best_frame",
             "volume_best_frame", "alpha_spheres_best_frame",
-            "center_x", "center_y", "center_z"]  # fmt: skip
+            "center_x", "center_y", "center_z",
+            "core_volume", "core_center_x", "core_center_y", "core_center_z"]  # fmt: skip
 
     def base(q):
         c = q["center"]
@@ -797,7 +812,9 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
                 f"{q['persistence']:.3f}", f"{q['quality_burial']:.3f}", f"{q['occupancy']:.3f}",
                 f"{q['burial']:.3f}", "" if q["cryptic"] is None else q["cryptic"], q["frames_open"],
                 q["rep"]["frame"], f"{q['volume']:.1f}", q["alpha_spheres"],
-                f"{c[0]:.3f}", f"{c[1]:.3f}", f"{c[2]:.3f}"]  # fmt: skip
+                f"{c[0]:.3f}", f"{c[1]:.3f}", f"{c[2]:.3f}",
+                f"{len(q['core']) * core.SPACING**3:.0f}",
+                *([f"{v:.3f}" for v in q["core"].mean(0)] if len(q["core"]) else ["", "", ""])]  # fmt: skip
 
     write_frame_pockets(where / "frame_pockets.npz", pockets)
     with open(where / "consensus_pockets.csv", "w", newline="") as fh:
@@ -810,7 +827,9 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
             w = csv.writer(fh)
             w.writerow(head + ["center_to_nearest_ligand_atom", "center_to_ligand_centroid",
                                "ligand_atoms_within_3A", "spheres_within_3A", "PPc", "MOc",
-                               "share_of_open_frames_PPc"])  # fmt: skip
+                               "share_of_open_frames_PPc", "core_center_to_nearest_ligand_atom", "PPc_core",
+                               "core_ligand_volume_covered", "core_volume_near_ligand",
+                               "core_volume_in_ligand", "core_DVO"])  # fmt: skip
             for q in pockets:
                 spheres = q["rep"]["centers"]
                 near = np.linalg.norm(lig[:, None] - spheres[None], axis=2) < MOC_D
@@ -821,9 +840,17 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
                 hits = sum(sites.dca(m["center"][None], lig) < PPC_CUTOFF for m in q["open"])
                 q.setdefault("verdicts", []).append((dca < PPC_CUTOFF,
                                                      lig_cov > MOC_LIGAND and pocket_cov > MOC_POCKET))
+                if len(q["core"]):
+                    core_dca = float(np.linalg.norm(lig - q["core"].mean(0), axis=1).min())
+                    ov = voxels.overlap(voxels.grid_pocket(q["core"], core.SPACING), lig)
+                    core_cols = [f"{core_dca:.3f}", core_dca < PPC_CUTOFF, f"{ov['ligand_volume_covered']:.3f}",
+                                 f"{ov['pocket_volume_near_ligand']:.3f}", f"{ov['pocket_volume_in_ligand']:.3f}",
+                                 f"{ov['DVO']:.3f}"]  # fmt: skip
+                else:
+                    core_cols = ["", False, "", "", "", ""]
                 w.writerow(base(q) + [f"{dca:.3f}", f"{dcc:.3f}", f"{lig_cov:.3f}", f"{pocket_cov:.3f}",
                                       dca < PPC_CUTOFF, lig_cov > MOC_LIGAND and pocket_cov > MOC_POCKET,
-                                      f"{hits / len(q['open']):.3f}"])  # fmt: skip
+                                      f"{hits / len(q['open']):.3f}", *core_cols])  # fmt: skip
     with open(where / "fpocket_info.txt", "w") as fh:
         for q in pockets:
             r = q["rep"]
@@ -841,6 +868,14 @@ def rank_trajectory(prefix: Path, flags, crystal, ligands, where: Path,
             for (x, y, z), r in zip(q["rep"]["centers"], q["rep"]["radii"], strict=True):
                 k += 1  # as fpocket writes its pockets: the alpha sphere's radius in the last column
                 fh.write(f"ATOM  {k % 100000:5d}    C STP  {q['rank_quality'] % 10000:4d}    "
+                         f"{x:8.3f}{y:8.3f}{z:8.3f}  0.00 {r:6.2f}\n")
+        fh.write("END\n")
+    with open(where / "consensus_cores.pqr", "w") as fh:
+        k, r = 0, voxels.cell_radius(core.SPACING)
+        for q in pockets:
+            for x, y, z in q["core"]:
+                k += 1  # one grid cell of the core per point, its radius that of a sphere of equal volume
+                fh.write(f"ATOM  {k % 100000:5d}    C COR  {q['rank_quality'] % 10000:4d}    "
                          f"{x:8.3f}{y:8.3f}{z:8.3f}  0.00 {r:6.2f}\n")
         fh.write("END\n")
     print(f"ranked {len(pockets)} consensus pockets from {len(instances)} pockets in {n} frames "
@@ -930,7 +965,15 @@ def consensus_view_lines(ranked) -> list[str]:
              "# correct for the holo ligand. All ranks and numbers are in pockets_vs_holo.csv",
              "load consensus_pockets.pqr, consensus_all"]  # fmt: skip
     lines += pocket_object_lines("consensus_all", drawn)
-    lines += ["# end of consensus pockets"]
+    lines += ["# each pocket's enclosed core (SiteMap's site-point rules on the beads, best frame):",
+              "# the object core_<quality rank>, one sphere per 2 A grid cell",
+              "load consensus_cores.pqr, cores_all"]  # fmt: skip
+    for k, _, _ in drawn:
+        color = RANK_COLORS[k - 1] if 1 <= k <= len(RANK_COLORS) else "grey50"
+        lines += [f"create core_{k}, cores_all and resi {k}", f"hide everything, core_{k}",
+                  f"show spheres, core_{k}", f"color {color}, core_{k}",
+                  f"set sphere_transparency, 0.45, core_{k}"]  # fmt: skip
+    lines += ["delete cores_all", "# end of consensus pockets"]
     return lines
 
 
