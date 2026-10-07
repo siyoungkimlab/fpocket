@@ -4,7 +4,7 @@ fpocket's pocket is all the empty space its alpha spheres describe, including
 the solvent-exposed fringe; SiteMap keeps only grid points that are outside the
 protein, in contact with it and enclosed by it (Halgren 2009). Here a pocket is
 trimmed to such points on one frame's beads, each bead with its own radius R_i
-(boonza.sites.particle_radii, sigma/2 from the force field):
+(sigma/2 of its type, radii/<model>_bead_radii.csv; :func:`bead_radii`):
 
   inside the pocket   within one of the pocket's alpha spheres
   outside the protein distance to every bead >= OUTSIDE * R_i  (SiteMap: d^2 >= 2.5 r^2)
@@ -20,9 +20,14 @@ on a SPACING grid. Each kept point stands for SPACING^3 of volume.
 
 from __future__ import annotations
 
+import csv
+from pathlib import Path
+
 import numpy as np
 from scipy.spatial import cKDTree
 
+#: per-bead-type LJ sizes of each force field (sigma, rmin and their halves, in Å)
+RADII = Path(__file__).resolve().parent / "radii"
 SPACING = 2.0
 OUTSIDE = np.sqrt(2.5)
 CONTACT = 3.0
@@ -30,6 +35,16 @@ ENCLOSURE = 0.5
 RAY_LENGTH = 8.0
 N_RAYS = 60
 MIN_NEIGHBOURS = 2
+
+
+def bead_radii(types, model: str, rule: str = "sigma") -> np.ndarray:
+    """Radius (Å) of each bead from its type: sigma/2 (``rule="sigma"``) or rmin/2 of the
+    type's self-interaction, read from radii/<model>_bead_radii.csv. NaN for a type the
+    table does not have."""
+    column = {"sigma": "radius_sigma_A", "rmin": "radius_rmin_A"}[rule]
+    path = RADII / f"{model}_bead_radii.csv"
+    table = {r["type"]: float(r[column]) for r in csv.DictReader(open(path))} if path.exists() else {}
+    return np.array([table.get(str(t).strip(), np.nan) for t in types])
 
 
 def _directions(n: int) -> np.ndarray:

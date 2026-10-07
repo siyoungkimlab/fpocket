@@ -534,10 +534,15 @@ def cmd_traj(args, extra):
         ranked = None
         if args.rank:
             crystal = crystal_pockets(apo, model, flags, where) if apo is not None else None
-            from boonza.sites import particle_radii  # noqa: PLC0415
+            # each bead's own radius (sigma/2 of its type, cg/radii/) for the pockets' enclosed cores;
+            # a type missing from the table takes boonza's reading of the topology
+            bead_radii = core.bead_radii(np.asarray(system.atoms["type"])[ids], model)
+            if np.isnan(bead_radii).any():
+                from boonza.sites import particle_radii  # noqa: PLC0415
 
-            # each bead's own radius (sigma/2) from the force field, for the pockets' enclosed cores
-            bead_radii = particle_radii(system, np.asarray(ids, np.int64), "sigma")
+                missing = np.isnan(bead_radii)
+                bead_radii[missing] = particle_radii(system, np.asarray(ids, np.int64)[missing], "sigma")
+                print(f"{missing.sum()} beads of types not in cg/radii/: radii from the topology")
             ranked = rank_trajectory(prefix, flags, crystal, ligands, where, args.consensus_cutoff,
                                      args.merge, args.merge_iso, bead_radii)
         if apo is not None:

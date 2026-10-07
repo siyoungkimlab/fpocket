@@ -38,12 +38,10 @@ def one(args):
     where, ranking, k, spacing = args
     import boonza
 
-    from boonza.sites import particle_radii
-
     model = where.parent.name
     run = where.parents[2] / model / where.name.split("_", 1)[0]
     dms = boonza.load(str(next(run.glob("*/sim_*/md_solute/solvated.dms"))))
-    bead_radii = particle_radii(dms, np.asarray(C.protein_ids(dms), np.int64), "sigma")
+    bead_radii = K.bead_radii(np.asarray(dms.atoms["type"])[C.protein_ids(dms)], model)
     holo = boonza.load(str(HOLO / f"{where.name.split('_', 1)[1]}.mae"))
     rows = sorted(csv.DictReader(open(where / "pockets_vs_holo.csv")), key=lambda r: int(r[f"rank_{ranking}"]))[:k]
     z = np.load(where / "frame_pockets.npz")
