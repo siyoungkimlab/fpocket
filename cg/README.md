@@ -18,39 +18,27 @@ opt-in options.
 
 ## Use
 
+The code that runs this lives in boonza now, as `boonza.pockets` and the
+command `boonza pockets` (github.com/siyoungkimlab/boonza; guide:
+`docs/guide/pockets.md`). This directory keeps the C changes it needs
+(`../src`) and the benchmark that tuned it (`benchmark/`).
+
 ```bash
-conda activate boonza          # boonza maps the structures and reads the files
+make ARCH=MACOSXARM64 && export FPOCKET_HOME=$PWD/..   # the build boonza runs (plain make on Linux)
 
-# all-atom in (.mae .pdb .cif ...): mapped onto beads, fpocket with the preset,
-# and an all-atom PyMOL view of the pockets
-python cgpocket.py run apo.mae --model sirah -o out/
-
-# the same, checked against a holo structure's ligand (PPc, MOc for every pocket),
-# with the view and its structures written to one folder (MAE in, MAE out)
-python cgpocket.py run apo.mae --model martini3 -o out/fpocket \
-    --holo holo.mae --holo-ligand "resname LIG" --view-dir out/
-
-# a structure that is coarse-grained already: the topology gives Martini bead
-# types and SIRAH charges; --apo gives the all-atom structure for the view
-python cgpocket.py run frame.gro --top topol.top --model martini3 -o out/ --apo apo.mae
-
-# a CG trajectory: protein beads only, made whole, fitted on the first frame,
-# written as PDB + DCD, then mdpocket with the preset
-python cgpocket.py traj --top topol.top --coords cg.gro --traj md.xtc \
-    --model martini3 -o out/md --run
-
-# just the flags, to pass to fpocket or mdpocket yourself (needs ../bin/fpocket)
-python cgpocket.py flags --model sirah
+boonza pockets run apo.mae --model sirah -o out/ --holo holo.mae --holo-ligand "resname LIG"
+boonza pockets run frame.gro --top topol.top --model martini3 -o out/ --apo apo.mae
+boonza pockets traj --workdir run/md --model martini3 -o out/ --apo apo.mae --holo holo.mae \
+    --mdpocket --every-ns 0.2
+boonza pockets flags --model sirah
 ```
 
-Flags after `--` override the preset, e.g. `... run x.mae --model sirah -- -i 25`.
+Flags after `--` override the preset, e.g. `... --model sirah -- -i 25`. A
+whole apo/holo set goes through `benchmark/run_views.py` and
+`benchmark/run_traj.py` (see [Batch runs](#batch-runs)). The Claude Code skill
+`cg-fpocket` is in the boonza repository (`.claude/skills/cg-fpocket/`).
 
-A whole apo/holo set goes through `benchmark/run_views.py` (see
-[Batch runs](#batch-runs)). The Claude Code skill `cg-fpocket`
-(`skill/cg-fpocket/SKILL.md`; install with
-`cp -r skill/cg-fpocket ~/.claude/skills/`) describes the same workflow.
-
-## Presets (`presets.json`)
+## Presets (boonza `data/pockets/presets.json`)
 
 | model | detection flags | Martini N beads | mdpocket density level |
 |---|---|---|---|
@@ -63,14 +51,17 @@ fpocket's defaults are `-m 3.4 -M 6.2 -D 2.4 -i 15 -A 3`.
 
 **Score.** Each CG preset also passes `--score_coefficients=…`: the pocket
 score refitted for that model (see [Method](#method)). That option, and
-therefore the presets, need the fpocket build in `../bin`.
+therefore the presets, need this fpocket build (`../bin`); boonza finds it
+through `$FPOCKET_HOME` or `PATH` and refuses any other.
 
 **Clustering.** All presets use single-linkage clustering (`-C s -e e`). The
 other linkages are about 10× slower on beads, which adds up over a trajectory.
 
-**Source of truth.** `presets.json` holds the flags, the score coefficients,
-the training and validation numbers, and the density levels.
-`cgpocket.py flags` reads it.
+**Source of truth.** boonza's `data/pockets/presets.json` holds the flags, the
+score coefficients, the training and validation numbers, and the density
+levels. The benchmark writes it (`report_score.py`, `calibrate_density.py`,
+into the installed boonza checkout, or `$BOONZA_PRESETS`); commit it there
+through a pull request. `boonza pockets flags` reads it.
 
 ### Why the flags change
 
@@ -101,8 +92,8 @@ polarity score expects.
 ### Probes, hydrogens, missing atoms
 
 - **Probes.** Chain `LIG` holds probes (ligand copies placed around the
-  protein, e.g. by boonza swim), not protein. Every selection in `cgpocket.py`
-  and `cgprep.py` subtracts it.
+  protein, e.g. by boonza swim), not protein. Every selection in `boonza.pockets`
+  subtracts it.
 - **Hydrogens.** fpocket ignores hydrogens: the Voronoi tessellation, the
   neighbour grid and the surface areas all use heavy atoms only, and on 1FVR
   with or without hydrogens the output is identical. For CG they matter a
@@ -114,118 +105,30 @@ polarity score expects.
   crystal structures should be completed first; `benchmark/prepare.py --fix`
   uses PDBFixer, heavy atoms only, and adds no loops.
 
-## Looking at the pockets
+## Looking at the pockets, trajectories, and the holo ligand
 
-Pockets are found on beads but should be looked at on atoms. `run` writes
-`view.pml` (with `--view-dir`) or `<name>_out/<name>_view.pml`:
+All of this is `boonza pockets` now; see boonza's `docs/guide/pockets.md` and
+the skill. In short:
 
-- black background, the all-atom apo as a wheat cartoon;
-- each pocket's alpha-sphere centers coloured by rank (1 red, 2 orange,
-  3 yellow, 4 green, 5 cyan, the rest grey) and labelled with the rank;
-- with `--holo`: the ligand as blue sticks, and the aligned holo protein in
-  light blue (loaded but hidden; toggle it on), with PPc/MOc in the labels of
-  correct pockets.
+- `view.pml` shows the pockets on the all-atom structures, each pocket its own
+  object `pocket_<rank>`, and runs from any directory.
+- `traj` fits the protein beads on their backbone (never chain-LIG probes),
+  runs fpocket on every frame read and merges pockets of different frames whose
+  centres lie within 6 A of a running centroid into consensus pockets, ranked
+  by persistence, quality (90th percentile of p over the frames open, pockets
+  open in < 5% of frames last) and quality x burial. A consensus pocket absent
+  from the apo crystal is flagged cryptic. Each gets its enclosed core on its
+  best frame: SiteMap's site-point rules (Halgren 2009) on the beads, each bead
+  with its own radius; the ranking does not use it.
+- With `--holo`, the holo protein is superposed on the apo by sequence (alpha
+  carbons, every chain, pruned at 2 A as ChimeraX does) and the ligand moves
+  with it; no binding-site residue list is used. Each pocket gets PPc (centre
+  < 4 A from a ligand atom) and MOc (> 50% of the ligand within 3 A of its
+  spheres and > 20% of its spheres within 3 A of the ligand).
 
-Each pocket is its own PyMOL object, `pocket_<rank>` (its alpha spheres and its
-label), so it can be shown or hidden alone from the object panel.
-
-Structures are written as MAE when the inputs are MAE, so bond orders are
-kept. Images exported from PyMOL have a transparent background.
-
-fpocket's own `<name>.pml`/`.tcl` show the beads, so use the view instead.
-fpocket's PyMOL template also has an upstream off-by-one bug: pocket 1 is left
-uncoloured and the script errors on a nonexistent last pocket. It's harmless
-and left unfixed, to keep default fpocket output unchanged.
-
-For trajectories, `traj --run --apo apo.mae [--holo holo.mae] --view-dir out/`
-writes the same kind of view for mdpocket's maps:
-
-- `--apo` is superposed on the trajectory's reference frame (the fitted first
-  frame), and `--holo` on the apo, both by `boonza.superpose`;
-- the pocket-frequency map is a red surface at 0.5 (a pocket in at least half
-  the frames);
-- the alpha-sphere density is a yellow mesh at the model's calibrated level;
-- `ligand_site_frequency.csv` gives, per holo ligand atom, the largest pocket
-  frequency and density within 2 Å.
-
-Every frame is fitted on the first by the protein backbone beads (BB / GC /
-CA, never chain-LIG probes) before mdpocket runs. Raw frames drift tens of Å
-and rotate freely, which would make the maps meaningless. A solute-only DMS
-(with Martini types or SIRAH charges in it) needs no topology, and on 1FXX
-1000 frames took 10–20 s.
-
-### Pocket ranking over a trajectory (`traj --rank`)
-
-Add `--rank` to `traj` for a pocket ranking over the trajectory: fpocket (with the
-preset) runs on every (strided) frame, each pocket's score becomes a probability
-(the refitted score is logistic) and gets boonza.sites' burial (share of 26
-directions that meet protein within 10 Å). Pockets of all frames are grouped
-into consensus pockets (greedy, best first, centres within 6 Å of a running
-centroid, `--consensus-cutoff`; each frame counts once, with its best member), and ranked three ways:
-
-- **persistence**: mean probability over all frames (0 where absent) -- the
-  pockets that are there and good most of the time;
-- **quality**: 90th percentile of the probability over the frames it is open,
-  pockets open in < 5% of frames ranked after the rest -- good pockets however
-  rarely they open (cryptic ones included);
-- **quality x buriedness**: quality times mean burial.
-
-A consensus pocket with no fpocket pocket of the apo crystal (mapped to beads)
-within 4 Å is flagged **cryptic**. Outputs in the view folder:
-`consensus_pockets.csv` (all ranks, occupancy, burial, cryptic, centre),
-`pockets_vs_holo.csv` (the same plus distances to the holo ligand, MOc shares,
-PPc/MOc and the share of open frames passing PPc), `fpocket_info.txt` (each
-consensus pocket's descriptors in its best frame), `frames.csv`, and
-`consensus_pockets.pqr` (shown in `view.pml`, coloured by quality rank,
-labelled with occupancy and the cryptic flag), and `frame_pockets.npz` (every
-per-frame pocket, so rankings can be redone without fpocket).
-
-**Enclosed cores.** fpocket's pocket is all the empty space its alpha spheres
-describe (on beads, 900-2000 Å³ for a typical site). Each consensus pocket
-also gets its enclosed core on its best frame (`core.py`): the 2 Å grid points
-inside its alpha spheres that are outside every bead by 1.58 x its radius, in
-contact with a bead and enclosed (at least half of 60 rays meet a bead within
-8 Å), SiteMap's site-point rules (Halgren 2009) with each bead's own radius
-from the force field (`boonza.sites.particle_radii`). Cores are SiteMap-sized
-(about 150-350 Å³) and sit more tightly on the ligand; the ranking does not
-change. Columns `core_volume`, `core_center_*`, and against the holo ligand
-`core_center_to_nearest_ligand_atom`, `PPc_core`, `core_ligand_volume_covered`,
-`core_volume_near_ligand` (within 2 Å), `core_volume_in_ligand`, `core_DVO`
-(volume measures from `volume.py`); `consensus_cores.pqr`, and in `view.pml`
-an object `core_<quality rank>` per drawn pocket. Cost: one fpocket run per
-frame, ~0.1-0.5 s each, so prefer `--stride` for long trajectories.
-
-Structures are written back in the format they were given (MAE stays MAE,
-ligand included); DMS is written as MAE, which PyMOL opens.
-
-mdpocket's frequency map (`*_freq_iso_0_5.pdb`) needs no change for CG. Its density map is contoured at 8, a level calibrated for all-atom;
-`traj --run` also writes the contour at the model's calibrated level
-(`<prefix>_dens_iso_<level>.pdb`).
-
-## Checking pockets against a holo ligand
-
-With `--holo`, the holo structure is only the answer key. `boonza.superpose`
-aligns the holo protein on the all-atom apo (or, without one, on the structure
-the pockets were found in), and the ligand moves with it:
-
-- alpha carbons are paired by sequence;
-- pairs that stay more than 2 Å apart are pruned, as ChimeraX does;
-- no binding-site residue list is used.
-
-For every pocket, in fpocket's rank order, `pockets_vs_holo.csv` gives:
-
-- the distance from the pocket center (the mean of its alpha-sphere centers)
-  to the nearest ligand heavy atom and to the ligand centroid;
-- the share of ligand atoms within 3 Å of the pocket's spheres;
-- the share of spheres within 3 Å of the ligand;
-- fpocket's own verdicts:
-  - **PPc:** center < 4 Å from a ligand atom;
-  - **MOc:** > 50% of the ligand covered and > 20% of the spheres on the
-    ligand.
-
-The fit follows the rigid core. On a protein whose domains moved between apo
-and holo, the ligand sits relative to the core and can be a few Å off the apo
-pocket.
+Outputs are `pockets.csv` and `pockets.json` (runs before 2026-10-07, by
+`cgpocket.py`, wrote `pockets_vs_holo.csv`; `benchmark/results.py` reads
+both).
 
 ## Method
 
@@ -335,8 +238,8 @@ For each pair of `si.csv` (not marked EXCLUDE) and each setting, this writes
 
 - `view.pml`;
 - `apo.mae`, `holo.mae`, `ligand.mae`, `pockets.pqr`;
-- `pockets_vs_holo.csv`, `fpocket_info.txt`;
-- fpocket's own run in `fpocket/`.
+- `pockets.csv`, `pockets.json`;
+- fpocket's own run, `<apo>_<model>_out/`, beside its input PDB.
 
 Each setting also gets `summary.csv` (first correct rank per pair) and
 `summary.md` (Top-1/3/5/10).
@@ -349,6 +252,18 @@ The settings are:
   not searched;
 - `martini2`, `martini3`, `sirah`: the presets.
 
+Trajectories (a run directory of `<model>/<apo>/<probes>/sim_000/md_solute/`):
+
+```bash
+python benchmark/run_traj.py --root ~/Dropbox/PocketFinding/SchrodingerSet/20261005_apo \
+    --data ~/Dropbox/PocketFinding/SchrodingerSet --every-ns 0.2 -j 8
+```
+
+writes `<root>/fpocket/<model>/<apo>_<holo>/` (`boonza pockets traj` with
+`--mdpocket`, plus `ligand_site_frequency.csv`) and `summary.csv`/`summary.md`
+per model. `volume_overlap.py`, `core_overlap.py` and `view_volumes.py` take
+such a folder further.
+
 ## Reproducing
 
 ```bash
@@ -358,8 +273,8 @@ PYTHONPATH=/path/to/pdbfixer python prepare.py train263 --data data/train263 --f
 PYTHONPATH=/path/to/pdbfixer python prepare.py pp48 --data data/pp48 --fix
 python prepare.py schrodinger --data ~/Dropbox/PocketFinding/SchrodingerSet
 for m in martini2 martini3 sirah; do python tune_score.py --model $m --random 150 --local 100 -j 4; done
-python report_score.py --models martini2 martini3 sirah   # presets + validation -> ../presets.json
-python calibrate_density.py --set pp48                    # mdpocket density levels -> ../presets.json
+python report_score.py --models martini2 martini3 sirah   # presets + validation -> boonza's presets.json
+python calibrate_density.py --set pp48                    # mdpocket density levels -> the same
 ```
 
 Trials go to `runs/train263/<model>.jsonl`, with each trial's pocket
@@ -395,12 +310,13 @@ fpocket. `tune.py` and `report.py` are from earlier searches (on the
 - **Unmappable residues.** Residues a model cannot map (phosphotyrosine,
   D-amino acids, modified residues) are left out with a warning.
 - **Martini 2 types.** Backbone bead types change with secondary structure, so
-  give a topology (`--top`); the built-in type table (`bead_types.json`) is
-  approximate without one. The side chains of Leu and Ile (AC1) and Val (AC2)
+  give a topology (`--top`); without one, boonza takes each bead's type from
+  the force field's residue block (the coil's), which is as polar under the
+  preset. The side chains of Leu and Ile (AC1) and Val (AC2)
   use Martini 2's amino-acid prefix; before 2026-10-06 they were wrongly
   counted polar. The Martini 2 preset was re-searched after the fix (a local
   search around the old preset; the old runs are in
   `benchmark/runs/*/archive_martini2_ac_polar/`).
 - **Surface descriptors.** The score's surface descriptors use element radii,
   which don't fit beads; the refitted coefficients absorb part of that.
-- **Tests:** `tests/` needs numpy and pytest; two tests need boonza.
+- **Tests:** in boonza, `tests/test_pockets.py`.

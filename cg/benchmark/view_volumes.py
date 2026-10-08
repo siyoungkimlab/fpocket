@@ -4,7 +4,7 @@ For each <apo>_<holo> pair: our first PPc pocket (volume_vs_holo.csv, ligand on
 its best frame) and SiteMap's first PPc site (MxMD_SiteMap CSV). SiteMap's site
 comes from a different MD frame, so its site points and frame are moved onto
 our frame by fitting its copy of the holo ligand onto ours (the same ligand,
-superposed on each frame by cgpocket.place_holo).
+superposed on each frame by results.ligand_on, whole-protein fit).
 
 Writes <out>/<pair>/: view.pml, apo.mae (all-atom apo, our frame), ligand.pdb,
 fpocket_volume.pqr (alpha spheres at r - 1.7 Å: the volume measured),
@@ -28,9 +28,10 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
-import cgpocket as C  # noqa: E402
-import volume as V  # noqa: E402
+import boonza
+from boonza.pockets import overlap as V
+
+import results as R
 
 DATA = Path.home() / "Dropbox/PocketFinding/SchrodingerSet"
 sys.path.insert(0, str(DATA / "MxMD_SiteMap"))
@@ -59,7 +60,6 @@ def write_ligand(path: Path, xyz) -> None:
 
 def ours(where: Path, model_dir: Path):
     """Best-frame alpha spheres and frame-placed ligand of our first PPc pocket."""
-    import boonza
 
     rows = list(csv.DictReader(open(where / "volume_vs_holo.csv")))
     r = next(x for x in rows if x["PPc_frame"] == "True")
@@ -68,20 +68,19 @@ def ours(where: Path, model_dir: Path):
     members = np.flatnonzero((z["consensus"] == q) & (z["frame"] == f))
     i = members[np.argmax(z["p"][members])]
     a, b = z["offsets"][i], z["offsets"][i + 1]
-    md = where / "mdpocket" / "md.dcd"
-    beads = C.load(md.with_suffix(".pdb"))
+    md = R.md(where)
+    beads = boonza.load(md.with_suffix(".pdb"))
     for k, frame in enumerate(boonza.open_trajectory(str(md), beads)):
         if k == f:
             beads.positions = np.asarray(frame.positions, float)
             break
     holo = boonza.load(str(DATA / "holo" / f"{where.name.split('_', 1)[1]}.mae"))
-    lig = C.place_holo(holo, beads, "resname LIG")[0]
+    lig = R.ligand_on(holo, beads)
     return r, z["sphere_centers"][a:b], z["sphere_radii"][a:b], lig
 
 
 def sitemap(pair: str):
     """Site points, frame and frame-placed ligand of SiteMap's first PPc site."""
-    import boonza
     import sitemap_vs_holo as M
 
     row = next(x for x in csv.DictReader(open(DATA / "MxMD_SiteMap/mxmd_sitemap_result" / f"{pair}.csv"))
@@ -97,7 +96,7 @@ def sitemap(pair: str):
                 points = np.asarray(M.load_block(header, block, Path(tmp), k).positions)
                 break
     holo = boonza.load(str(DATA / "holo" / f"{pair.split('_', 1)[1]}.mae"))
-    lig = C.place_holo(holo, frame, "resname LIG")[0]
+    lig = R.ligand_on(holo, frame)
     return row, points, frame, lig
 
 

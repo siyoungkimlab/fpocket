@@ -43,8 +43,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import cgprep  # noqa: E402
+from boonza.pockets import beads, prepare as cgprepare
 
 HERE = Path(__file__).resolve().parent
 SITE_CUTOFF = 5.0  # Å: residues this close to a ligand heavy atom make the site
@@ -215,19 +214,18 @@ def schrodinger_pairs(data: Path) -> list[dict]:
 
 def schrodinger_truth(p: dict) -> list[dict]:
     """The holo ligand on each structure: as it is on the holo, and on the apo
-    carried by boonza.superpose of the holo protein on the apo protein
-    (cgpocket.place_holo, the same placement cgpocket's --holo uses).  The
-    residue lists of si.csv are not used."""
+    carried by boonza.superpose of the whole holo protein on the apo protein
+    (results.ligand_on).  The residue lists of si.csv are not used."""
     import boonza
-    import cgpocket
+
+    import results
 
     apo, holo = boonza.load(p["apo_file"]), boonza.load(p["holo_file"])
-    holo = cgpocket.without_probes(holo, "resname LIG")
-    apo_protein = apo.select(f"protein and {cgprep.NOT_PROBES}").clone()
+    apo_protein = apo.select(f"protein and {cgprepare.NOT_PROBES}").clone()
     lig_holo = np.asarray(holo.positions)[ligand_atoms(holo, "LIG")]
-    lig_apo, info, _ = cgpocket.place_holo(holo, apo_protein, "resname LIG")
-    fit = (f"holo superposed on apo ({info['paired']}/{info['matched']} alpha carbons, "
-           f"RMSD {info['fit_rmsd']:.2f} Å)")  # fmt: skip
+    lig_apo, sup = results.ligand_on(holo, apo_protein, with_fit=True)
+    fit = (f"holo superposed on apo ({sup.n_used}/{sup.n_matched} alpha carbons, "
+           f"RMSD {sup.rmsd:.2f} Å)")  # fmt: skip
     note = f"{p['note']}; {fit}".lstrip("; ")
     # the residues within SITE_CUTOFF of the ligand, for reference only (no criterion uses them)
     apo_site = labels_of(apo, residues_near(apo, protein_selection("LIG"), lig_apo, SITE_CUTOFF))
@@ -254,15 +252,15 @@ def write_structure(args):
         warnings.simplefilter("always")
         s = boonza.load(str(path))
         done = {}
-        for model in cgprep.MODELS:
+        for model in beads.MODELS:
             out = Path(f"{out_stem}_{model}.pdb")
             npolar = Path(f"{out_stem}_{model}_npolar.pdb")  # Martini N beads counted polar
             try:
-                if not out.exists() or (model in cgprep.FORCEFIELDS and not npolar.exists()):
-                    cg = cgprep.coarse_grain(s, model, protein)
-                    cgprep.write_fpocket_pdb(cg, out, model=model)
-                    if model in cgprep.FORCEFIELDS:
-                        cgprep.write_fpocket_pdb(cg, npolar, model=model, n_polar=True)
+                if not out.exists() or (model in beads.FORCEFIELDS and not npolar.exists()):
+                    cg = cgprepare.coarse_grain(s, model, protein)
+                    beads.write_fpocket_pdb(cg, out, model=model)
+                    if model in beads.FORCEFIELDS:
+                        beads.write_fpocket_pdb(cg, npolar, model=model, n_polar=True)
                 done[model] = True
             except Exception as e:  # noqa: BLE001
                 done[model] = f"{type(e).__name__}: {e}"

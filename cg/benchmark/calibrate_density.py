@@ -1,4 +1,4 @@
-"""The mdpocket density isovalue for each representation, written into ../presets.json.
+"""The mdpocket density isovalue for each representation, written into boonza's presets.json (evaluate.presets_path).
 
 mdpocket's density map counts alpha-sphere centers near each grid point
 (``*_dens.dx``) and contours it at 8 (``*_dens_iso_8.pdb``), a level set for
@@ -29,7 +29,6 @@ import numpy as np
 import evaluate as E
 
 MDPOCKET = E.HERE.parents[1] / "bin" / "mdpocket"
-PRESETS = E.HERE.parent / "presets.json"
 ALL_ATOM_ISO = 8.0
 NEAR = 3.0  # Å from a ligand atom
 
@@ -71,7 +70,7 @@ def main():
     ap.add_argument("--set", default="pp48", choices=E.SETS)
     ap.add_argument("-j", "--jobs", type=int, default=10)
     args = ap.parse_args()
-    presets = json.loads(PRESETS.read_text())
+    presets = json.loads(E.presets_path().read_text())
     entries = E.structures(args.set, ("holo",))
 
     def median(pool, variant, flags):
@@ -89,7 +88,7 @@ def main():
             iso = round(2 * ALL_ATOM_ISO * peak / reference) / 2  # to the nearest 0.5
             p["mdpocket_density_iso"] = iso
             print(f"{model:9s} median peak {peak:.1f} (n={n}): density isovalue {iso}")
-    PRESETS.write_text(json.dumps(presets, indent=1))
+    E.presets_path().write_text(json.dumps(presets, indent=1))
 
 
 if __name__ == "__main__":

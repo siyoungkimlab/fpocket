@@ -2,14 +2,14 @@
 
 As volume_overlap.py (top-K consensus pockets of a ranking, each on its best
 frame, the holo ligand superposed on that frame), but each pocket is first
-trimmed to its enclosed core (cg/core.py, after SiteMap's site-point rules).
+trimmed to its enclosed core (boonza.pockets.enclosed_core, after SiteMap's site-point rules).
 The pocket ranking is unchanged. Writes <pair>/core_vs_holo.csv:
 
   core_points, core_volume       the core (0 if nothing in the pocket is enclosed)
   PPc_core / PPc_pocket          centroid of the core / of the full pocket (best frame)
                                  < 4 Å from that frame's ligand
   ligand_volume_covered, pocket_volume_near_ligand, pocket_volume_in_ligand, DVO
-                                 of the core (cg/volume.py)
+                                 of the core (boonza.pockets.overlap)
 
     python core_overlap.py ~/Dropbox/PocketFinding/SchrodingerSet/20261005_apo/fpocket -j 12
 """
@@ -23,12 +23,13 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+import boonza
 import numpy as np
+from boonza.pockets import core as K
+from boonza.pockets import overlap as V
+from boonza.pockets import protein_ids
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import cgpocket as C  # noqa: E402
-import core as K  # noqa: E402
-import volume as V  # noqa: E402
+import results as R
 from volume_overlap import HOLO, frames  # noqa: E402
 
 MEASURES = ["ligand_volume_covered", "pocket_volume_near_ligand", "pocket_volume_in_ligand", "DVO", "core_volume"]
@@ -37,18 +38,17 @@ MEASURES = ["ligand_volume_covered", "pocket_volume_near_ligand", "pocket_volume
 def one(args):
     where, ranking, k, spacing, outside = args
     K.OUTSIDE = outside  # worker processes start with the module default
-    import boonza
 
     model = where.parent.name
     run = where.parents[2] / model / where.name.split("_", 1)[0]
     dms = boonza.load(str(next(run.glob("*/sim_*/md_solute/solvated.dms"))))
-    bead_radii = K.bead_radii(np.asarray(dms.atoms["type"])[C.protein_ids(dms)], model)
+    bead_radii = K.bead_radii(np.asarray(dms.atoms["type"])[protein_ids(dms)], model)
     holo = boonza.load(str(HOLO / f"{where.name.split('_', 1)[1]}.mae"))
-    rows = sorted(csv.DictReader(open(where / "pockets_vs_holo.csv")), key=lambda r: int(r[f"rank_{ranking}"]))[:k]
+    rows = sorted(R.table(where), key=lambda r: int(r[f"rank_{ranking}"]))[:k]
     z = np.load(where / "frame_pockets.npz")
-    md = where / "mdpocket" / "md.dcd"
+    md = R.md(where)
     xyz = frames(md, {int(r["best_frame"]) for r in rows})
-    beads = C.load(md.with_suffix(".pdb"))
+    beads = boonza.load(md.with_suffix(".pdb"))
     if len(bead_radii) != beads.natoms:
         sys.exit(f"{where}: {len(bead_radii)} bead radii for {beads.natoms} beads")
     ligands, out = {}, []
@@ -57,20 +57,20 @@ def one(args):
         if f not in ligands:
             ref = beads.clone()
             ref.positions = xyz[f]
-            ligands[f] = C.place_holo(holo, ref, "resname LIG")[0]
+            ligands[f] = R.ligand_on(holo, ref)
         lig = ligands[f]
         members = np.flatnonzero((z["consensus"] == int(r["rank_quality"])) & (z["frame"] == f))
         i = members[np.argmax(z["p"][members])]
         a, b = z["offsets"][i], z["offsets"][i + 1]
         centres, radii = z["sphere_centers"][a:b], z["sphere_radii"][a:b]
-        pts = K.core_points(centres, radii, xyz[f], bead_radii, spacing)
+        pts = K.enclosed_core(centres, radii, xyz[f], bead_radii, spacing)
         dca = lambda c: float(np.linalg.norm(lig - c, axis=1).min())  # noqa: E731
         row = {"rank": int(r[f"rank_{ranking}"]), "rank_quality": r["rank_quality"], "best_frame": f,
-               "PPc_pocket": dca(centres.mean(0)) < C.PPC_CUTOFF, "core_points": len(pts),
+               "PPc_pocket": dca(centres.mean(0)) < V.PPC_CUTOFF, "core_points": len(pts),
                "core_volume": len(pts) * spacing**3,
-               "PPc_core": bool(len(pts)) and dca(pts.mean(0)) < C.PPC_CUTOFF}  # fmt: skip
+               "PPc_core": bool(len(pts)) and dca(pts.mean(0)) < V.PPC_CUTOFF}  # fmt: skip
         if len(pts):
-            ov = V.overlap(V.grid_pocket(pts, spacing), lig)
+            ov = V.volume_overlap(V.grid_pocket(pts, spacing), lig)
             row.update({m: round(ov[m], 4) for m in MEASURES[:4]})
         else:
             row.update({m: 0.0 for m in MEASURES[:4]})
@@ -103,7 +103,7 @@ def main():
     args = ap.parse_args()
     K.OUTSIDE = args.outside
     jobs = [(d, args.ranking, args.k, args.spacing, args.outside) for m in args.models for d in sorted((args.root / m).iterdir())
-            if (d / "frame_pockets.npz").exists()]  # fmt: skip
+            if (d / "frame_pockets.npz").exists() and R.has_table(d)]  # fmt: skip
     by_model = {}
     with ProcessPoolExecutor(args.jobs) as pool:
         for model, pair, out in pool.map(one, jobs):

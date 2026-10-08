@@ -3,12 +3,12 @@
 For every <model>/<apo>_<holo>/ of a traj --rank output (it needs
 frame_pockets.npz), the top-K consensus pockets of a ranking are taken one at a
 time. Each pocket is its best frame's alpha spheres; the holo structure is
-superposed on that very frame (cgpocket.place_holo, whole-protein fit), so the
+superposed on that very frame (results.ligand_on, whole-protein fit), so the
 ligand follows the protein rather than sitting where it was in the first frame.
 Then, per pocket:
 
   PPc_frame        best frame's sphere centroid < 4 Å from that frame's ligand
-  volume measures  cg/volume.py: the alpha spheres' empty space (r - 1.7 Å) and
+  volume measures  boonza.pockets.overlap: the alpha spheres' empty space (r - 1.7 Å) and
                    the ligand on a common 1 Å grid -> ligand_volume_covered,
                    pocket_volume_in_ligand, pocket_volume_near_ligand (2 Å), DVO
 
@@ -23,24 +23,22 @@ from __future__ import annotations
 import argparse
 import csv
 import statistics
-import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+import boonza
 import numpy as np
+from boonza.pockets import overlap as V
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import cgpocket as C  # noqa: E402
-import volume as V  # noqa: E402
+import results as R
 
 HOLO = Path.home() / "Dropbox/PocketFinding/SchrodingerSet/holo"
 MEASURES = ["ligand_volume_covered", "pocket_volume_in_ligand", "pocket_volume_near_ligand", "DVO"]
 
 
 def frames(md: Path, wanted: set[int]) -> dict[int, np.ndarray]:
-    import boonza
 
-    beads = C.load(md.with_suffix(".pdb"))
+    beads = boonza.load(md.with_suffix(".pdb"))
     out = {}
     for f, frame in enumerate(boonza.open_trajectory(str(md), beads)):
         if f in wanted:
@@ -52,15 +50,14 @@ def frames(md: Path, wanted: set[int]) -> dict[int, np.ndarray]:
 
 def one(args):
     where, ranking, k, shrink = args
-    import boonza
 
     holo_id = where.name.split("_", 1)[1]
     holo = boonza.load(str(HOLO / f"{holo_id}.mae"))
-    rows = sorted(csv.DictReader(open(where / "pockets_vs_holo.csv")), key=lambda r: int(r[f"rank_{ranking}"]))[:k]
+    rows = sorted(R.table(where), key=lambda r: int(r[f"rank_{ranking}"]))[:k]
     z = np.load(where / "frame_pockets.npz")
-    md = where / "mdpocket" / "md.dcd"
+    md = R.md(where)
     xyz = frames(md, {int(r["best_frame"]) for r in rows})
-    beads = C.load(md.with_suffix(".pdb"))
+    beads = boonza.load(md.with_suffix(".pdb"))
     ligands = {}
     out = []
     for r in rows:
@@ -68,7 +65,7 @@ def one(args):
         if f not in ligands:
             ref = beads.clone()
             ref.positions = xyz[f]
-            ligands[f] = C.place_holo(holo, ref, "resname LIG")[0]
+            ligands[f] = R.ligand_on(holo, ref)
         lig = ligands[f]
         members = np.flatnonzero((z["consensus"] == int(r["rank_quality"])) & (z["frame"] == f))
         i = members[np.argmax(z["p"][members])]
@@ -77,8 +74,8 @@ def one(args):
         dca = float(np.linalg.norm(lig - centres.mean(0), axis=1).min())
         out.append({"rank": int(r[f"rank_{ranking}"]), "rank_quality": r["rank_quality"], "best_frame": f,
                     "PPc_first_frame": r["PPc"], "center_to_ligand_frame": round(dca, 3),
-                    "PPc_frame": dca < C.PPC_CUTOFF,
-                    **{k2: round(v, 4) for k2, v in V.overlap(V.sphere_pocket(centres, radii, shrink), lig).items()}})  # fmt: skip
+                    "PPc_frame": dca < V.PPC_CUTOFF,
+                    **{k2: round(v, 4) for k2, v in V.volume_overlap(V.sphere_pocket(centres, radii, shrink), lig).items()}})  # fmt: skip
     with open(where / "volume_vs_holo.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(out[0]))
         w.writeheader()
@@ -104,7 +101,7 @@ def main():
     ap.add_argument("-j", "--jobs", type=int, default=8)
     args = ap.parse_args()
     jobs = [(d, args.ranking, args.k, args.shrink) for m in args.models for d in sorted((args.root / m).iterdir())
-            if (d / "frame_pockets.npz").exists()]  # fmt: skip
+            if (d / "frame_pockets.npz").exists() and R.has_table(d)]  # fmt: skip
     by_model = {}
     with ProcessPoolExecutor(args.jobs) as pool:
         for model, pair, out in pool.map(one, jobs):

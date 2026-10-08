@@ -20,7 +20,7 @@ default flags, run once on a set the search never saw.
 structure, and the holo structure only says where the site is.  ``--target
 all`` also counts fpocket runs on the holo structures.
 
-    python report.py                     # prints the tables, writes ../presets.json
+    python report.py                     # prints the tables, writes boonza's presets.json (evaluate.presets_path)
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ def main():
     for model, _, best, *_ in rows:
         print(f"{model:9s} {' '.join(tune.flags_of(best['params']))}"
               f"{'   (Martini N beads polar)' if best['params'].get('npolar') else ''}")  # fmt: skip
-    (HERE.parent / "presets.json").write_text(json.dumps(presets, indent=1))
+    E.presets_path().write_text(json.dumps(presets, indent=1))
 
 
 if __name__ == "__main__":

@@ -44,6 +44,18 @@ boonza_sites = importlib.import_module("boonza.sites")  # boonza.sites is also a
 HERE = Path(__file__).resolve().parent
 FPOCKET = HERE.parents[1] / "bin" / "fpocket"
 DATA = HERE / "data"
+
+
+def presets_path() -> Path:
+    """The presets file a search writes: boonza's own, data/pockets/presets.json in the boonza
+    checkout installed here (commit it there, through a pull request), or $BOONZA_PRESETS."""
+    import os
+
+    if os.environ.get("BOONZA_PRESETS"):
+        return Path(os.environ["BOONZA_PRESETS"])
+    from boonza.pockets.run import PRESETS
+
+    return Path(PRESETS)
 SETS = ("pp48", "schrodinger", "train263")
 
 PRECISION = 0.5

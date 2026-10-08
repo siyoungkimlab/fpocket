@@ -9,7 +9,7 @@ apo/holo pairs (as the fpocket paper reported) and the Schrodinger apo
 structures.  All-atom fpocket with its default flags and built-in score is
 the reference, as are the coarse-grained structures with those defaults.
 
-    python report_score.py      # prints the tables, writes ../presets.json
+    python report_score.py      # prints the tables, writes boonza's presets.json (evaluate.presets_path)
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def main():
                     help="representations whose search is not finished: their preset is withdrawn")
     args = ap.parse_args()
 
-    path = R.HERE.parent / "presets.json"
+    path = E.presets_path()
     presets = json.loads(path.read_text()) if path.exists() else {}
     # all-atom keeps fpocket's own flags and score: it is the reference, not tuned
     presets["aa"] = {"flags": [], "n_polar": False,
